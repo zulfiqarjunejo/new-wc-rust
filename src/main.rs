@@ -1,63 +1,62 @@
-use std::{fs::File, io::{BufReader, Read}};
+pub mod printer;
+pub mod counter;
 
-#[derive(Debug)]
-struct Counts {
-    bytes: u32,
-    characters: u32,
-    lines: u32,
-    words: u32,
-}
+use clap::Parser;
+use std::{
+    fs::File,
+    io::{self, BufReader, Read},
+};
 
-fn new_counts() -> Counts {
-    Counts{
-        bytes: 0,
-        characters: 0,
-        lines: 0,
-        words: 0
-    }
-}
+use crate::counter::get_counts_for;
+use crate::printer::Printer;
 
-fn get_counts_for(file: &File) -> Counts {
-    let reader = BufReader::new(file);
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short, default_value_t = false)]
+    c: bool,
 
-    let mut counts = new_counts();
+    #[arg(short, default_value_t = false)]
+    m: bool,
 
-    let mut previous_character: Option<char> = None;
-    for byte in reader.bytes() {
-        if let Ok(b) = byte {
-            let character = b as char;
+    #[arg(short, default_value_t = false)]
+    l: bool,
 
-            match character {
-                '\n' => counts.lines += 1,
-                character if character.is_whitespace() => {
-                    if let Some(pc) = previous_character {
-                        if !pc.is_whitespace() {
-                            counts.words += 1;
-                        }
-                    }
-                },
-                _ => ()
-            }
-            
-            counts.bytes += 1;
-            counts.characters += 1;
+    #[arg(short, default_value_t = false)]
+    w: bool,
 
-            previous_character = Some(character);
-        }
-    }
-
-    counts
+    // TODO: Understand this syntax
+    #[arg(required = false, value_parser = clap::value_parser!(String))]
+    file_name: Option<String>,
 }
 
 fn main() {
-    println!("Hello, wc!");
+    let args = Args::parse();
+    let mut file_name = String::from("");
 
-    let result = File::open("test_files/test.txt");
-    match result {
-        Ok(file) => {
-            let counts = get_counts_for(&file);
-            println!("{:?}", counts);
-        },
-        Err(_) => println!("error !!!"),
-    }
+    let reader: Box<dyn Read> = if let Some(f) = args.file_name {
+        file_name = f.clone();
+        let result = File::open(f);
+
+        let reader = match result {
+            Ok(file) => BufReader::new(file),
+            Err(_) => todo!(),
+        };
+
+        Box::new(reader)
+    } else {
+        let reader = BufReader::new(io::stdin());
+        Box::new(reader)
+    };
+
+    let printer = Printer{
+            should_print_bytes: args.m,
+            should_print_characters: args.c,
+            should_print_lines: args.l,
+            should_print_words: args.w
+    };
+
+    let counts = get_counts_for(reader);
+
+    printer.print_counts(counts, file_name);
 }
